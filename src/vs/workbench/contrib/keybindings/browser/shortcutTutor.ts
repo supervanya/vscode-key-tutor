@@ -17,10 +17,10 @@ import { INotificationService, Severity } from '../../../../platform/notificatio
 import { IStorageService, StorageScope, StorageTarget } from '../../../../platform/storage/common/storage.js';
 import { IWorkbenchContribution } from '../../../common/contributions.js';
 
-export const KeybindingTutorSettings = {
-	Enabled: 'workbench.keybindingTutor.enabled',
-	Threshold: 'workbench.keybindingTutor.threshold',
-	IgnoredCommands: 'workbench.keybindingTutor.ignoredCommands',
+export const ShortcutTutorSettings = {
+	Enabled: 'keyboard.shortcutTutor.enabled',
+	Threshold: 'keyboard.shortcutTutor.threshold',
+	IgnoredCommands: 'keyboard.shortcutTutor.ignoredCommands',
 } as const;
 
 /**
@@ -41,9 +41,9 @@ const INPUT_ATTRIBUTION_WINDOW_MS = 1000;
  * Commands that are executed programmatically as a side effect of other actions and
  * therefore must never consume an input.
  */
-const IGNORED_COMMANDS = /^(_|setContext$|vscode\.|workbench\.action\.keybindingTutor\.)/;
+const IGNORED_COMMANDS = /^(_|setContext$|vscode\.|workbench\.action\.shortcutTutor\.)/;
 
-const COMMAND_USAGE_STORAGE_KEY = 'keybindingTutor.commandUsage';
+const COMMAND_USAGE_STORAGE_KEY = 'shortcutTutor.commandUsage';
 
 /**
  * Reads how often each command was run with the keyboard and with the mouse.
@@ -71,9 +71,9 @@ export function getCommandLabel(commandId: string): string {
  * Notices commands that were run with the mouse although they have a keybinding,
  * and after a few occurrences tells the user which keybinding they could have used.
  */
-export class KeybindingTutorContribution extends Disposable implements IWorkbenchContribution {
+export class ShortcutTutorContribution extends Disposable implements IWorkbenchContribution {
 
-	static readonly ID = 'workbench.contrib.keybindingTutor';
+	static readonly ID = 'workbench.contrib.shortcutTutor';
 
 	/** Timestamp of the last pointer press that has not yet been attributed to a command, or 0. */
 	private _pendingPointerPress = 0;
@@ -110,7 +110,7 @@ export class KeybindingTutorContribution extends Disposable implements IWorkbenc
 	}
 
 	private _onWillExecuteCommand(commandId: string): void {
-		if (!this._configurationService.getValue<boolean>(KeybindingTutorSettings.Enabled) || IGNORED_COMMANDS.test(commandId)) {
+		if (!this._configurationService.getValue<boolean>(ShortcutTutorSettings.Enabled) || IGNORED_COMMANDS.test(commandId)) {
 			return;
 		}
 
@@ -120,7 +120,7 @@ export class KeybindingTutorContribution extends Disposable implements IWorkbenc
 		// Typing presses keys without running commands, so a command without a keybinding
 		// that runs shortly after was not triggered by the keyboard.
 		const fromKeyboard = !!keybinding && this._pendingKeyPress !== 0 && now - this._pendingKeyPress <= INPUT_ATTRIBUTION_WINDOW_MS;
-		this._logService.trace(`[KeybindingTutor] ${commandId} fromPointer=${fromPointer} fromKeyboard=${fromKeyboard} keybinding=${keybinding?.getLabel() ?? 'none'}`);
+		this._logService.trace(`[ShortcutTutor] ${commandId} fromPointer=${fromPointer} fromKeyboard=${fromKeyboard} keybinding=${keybinding?.getLabel() ?? 'none'}`);
 
 		if (!fromPointer && !fromKeyboard) {
 			return;
@@ -136,7 +136,7 @@ export class KeybindingTutorContribution extends Disposable implements IWorkbenc
 		}
 
 		const count = (this._mouseInvocationsSinceHint.get(commandId) ?? 0) + 1;
-		const threshold = Math.max(1, this._configurationService.getValue<number>(KeybindingTutorSettings.Threshold) ?? 3);
+		const threshold = Math.max(1, this._configurationService.getValue<number>(ShortcutTutorSettings.Threshold) ?? 3);
 		if (count < threshold) {
 			this._mouseInvocationsSinceHint.set(commandId, count);
 			return;
@@ -145,9 +145,9 @@ export class KeybindingTutorContribution extends Disposable implements IWorkbenc
 
 		this._notificationService.prompt(
 			Severity.Info,
-			localize('keybindingTutor.hint', "You can run '{0}' with {1}.", getCommandLabel(commandId), keybinding.getLabel() ?? ''),
+			localize('shortcutTutor.hint', "You can run '{0}' with {1}.", getCommandLabel(commandId), keybinding.getLabel() ?? ''),
 			[{
-				label: localize('keybindingTutor.dontShowAgain', "Don't Show Again for This Command"),
+				label: localize('shortcutTutor.dontShowAgain', "Don't Show Again for This Command"),
 				run: () => this._ignore(commandId),
 			}],
 		);
@@ -161,10 +161,10 @@ export class KeybindingTutorContribution extends Disposable implements IWorkbenc
 	}
 
 	private _getIgnoredCommands(): string[] {
-		return this._configurationService.getValue<string[]>(KeybindingTutorSettings.IgnoredCommands) ?? [];
+		return this._configurationService.getValue<string[]>(ShortcutTutorSettings.IgnoredCommands) ?? [];
 	}
 
 	private _ignore(commandId: string): Promise<void> {
-		return this._configurationService.updateValue(KeybindingTutorSettings.IgnoredCommands, [...this._getIgnoredCommands(), commandId], ConfigurationTarget.USER);
+		return this._configurationService.updateValue(ShortcutTutorSettings.IgnoredCommands, [...this._getIgnoredCommands(), commandId], ConfigurationTarget.USER);
 	}
 }

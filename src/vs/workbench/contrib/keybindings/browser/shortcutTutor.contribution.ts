@@ -9,45 +9,51 @@ import { registerAction2 } from '../../../../platform/actions/common/actions.js'
 import { IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
 import { Extensions as ConfigurationExtensions, IConfigurationNode, IConfigurationRegistry } from '../../../../platform/configuration/common/configurationRegistry.js';
 import { Registry } from '../../../../platform/registry/common/platform.js';
-import { workbenchConfigurationNodeBase } from '../../../common/configuration.js';
 import { IWorkbenchContribution, registerWorkbenchContribution2, WorkbenchPhase } from '../../../common/contributions.js';
-import { KeybindingTutorContribution, KeybindingTutorSettings } from './keybindingTutor.js';
-import { ResetCommandUsageAction, ShowCommandUsageAction } from './keybindingTutorActions.js';
+import { ShortcutTutorContribution, ShortcutTutorSettings } from './shortcutTutor.js';
+import { ResetCommandUsageAction, ShowCommandUsageAction } from './shortcutTutorActions.js';
 
 const configurationRegistry = Registry.as<IConfigurationRegistry>(ConfigurationExtensions.Configuration);
 
+const keyboardConfigurationNodeBase = Object.freeze<IConfigurationNode>({
+	id: 'keyboard',
+	order: 15,
+	type: 'object',
+	title: localize('keyboardConfigurationTitle', "Keyboard"),
+});
+
 configurationRegistry.registerConfiguration({
-	...workbenchConfigurationNodeBase,
+	...keyboardConfigurationNodeBase,
 	properties: {
-		[KeybindingTutorSettings.Enabled]: {
+		[ShortcutTutorSettings.Enabled]: {
 			type: 'boolean',
 			default: false,
-			markdownDescription: localize('keybindingTutor.enabled', "Controls whether to show a hint with the keybinding of a command that was repeatedly run with the mouse. Run [Show Keyboard and Mouse Usage]({0}) to see how often each command was run with the keyboard and with the mouse.", `command:${ShowCommandUsageAction.ID}`),
+			markdownDescription: localize('shortcutTutor.enabled', "Controls whether to show a hint with the keyboard shortcut of a command that was repeatedly run with the mouse. Run [Show Keyboard and Mouse Usage]({0}) to see how often each command was run with the keyboard and with the mouse.", `command:${ShowCommandUsageAction.ID}`),
 		},
 	}
 });
 
 /**
- * Creates the settings that only apply while the keybinding tutor is enabled.
+ * Creates the settings that only apply while the keyboard shortcut tutor is enabled.
  * They are hidden from the Settings editor with `included: false` while it is disabled.
  */
 function createOptionsConfigurationNode(included: boolean): IConfigurationNode {
 	return {
-		...workbenchConfigurationNodeBase,
+		...keyboardConfigurationNodeBase,
 		properties: {
-			[KeybindingTutorSettings.Threshold]: {
+			[ShortcutTutorSettings.Threshold]: {
 				type: 'number',
 				default: 3,
 				minimum: 1,
 				included,
-				description: localize('keybindingTutor.threshold', "Controls how many times a command has to be run with the mouse before its keybinding is shown."),
+				description: localize('shortcutTutor.threshold', "Controls how many times a command has to be run with the mouse before its keyboard shortcut is shown."),
 			},
-			[KeybindingTutorSettings.IgnoredCommands]: {
+			[ShortcutTutorSettings.IgnoredCommands]: {
 				type: 'array',
 				items: { type: 'string' },
 				default: [],
 				included,
-				description: localize('keybindingTutor.ignoredCommands', "Commands for which no keybinding hint is shown, for example after selecting 'Don't Show Again for This Command'."),
+				description: localize('shortcutTutor.ignoredCommands', "Commands for which no keyboard shortcut hint is shown, for example after selecting 'Don't Show Again for This Command'."),
 			},
 		}
 	};
@@ -59,11 +65,11 @@ let optionsIncluded = false;
 configurationRegistry.registerConfiguration(optionsConfigurationNode);
 
 /**
- * Shows the keybinding tutor's options in the Settings editor only while the tutor is enabled.
+ * Shows the keyboard shortcut tutor's options in the Settings editor only while the tutor is enabled.
  */
-class KeybindingTutorSettingsContribution extends Disposable implements IWorkbenchContribution {
+class ShortcutTutorSettingsContribution extends Disposable implements IWorkbenchContribution {
 
-	static readonly ID = 'workbench.contrib.keybindingTutorSettings';
+	static readonly ID = 'workbench.contrib.shortcutTutorSettings';
 
 	constructor(
 		@IConfigurationService private readonly _configurationService: IConfigurationService,
@@ -71,14 +77,14 @@ class KeybindingTutorSettingsContribution extends Disposable implements IWorkben
 		super();
 		this._updateOptionsVisibility();
 		this._register(this._configurationService.onDidChangeConfiguration(e => {
-			if (e.affectsConfiguration(KeybindingTutorSettings.Enabled)) {
+			if (e.affectsConfiguration(ShortcutTutorSettings.Enabled)) {
 				this._updateOptionsVisibility();
 			}
 		}));
 	}
 
 	private _updateOptionsVisibility(): void {
-		const included = !!this._configurationService.getValue<boolean>(KeybindingTutorSettings.Enabled);
+		const included = !!this._configurationService.getValue<boolean>(ShortcutTutorSettings.Enabled);
 		if (included === optionsIncluded) {
 			return;
 		}
@@ -89,8 +95,8 @@ class KeybindingTutorSettingsContribution extends Disposable implements IWorkben
 	}
 }
 
-registerWorkbenchContribution2(KeybindingTutorSettingsContribution.ID, KeybindingTutorSettingsContribution, WorkbenchPhase.AfterRestored);
-registerWorkbenchContribution2(KeybindingTutorContribution.ID, KeybindingTutorContribution, WorkbenchPhase.Eventually);
+registerWorkbenchContribution2(ShortcutTutorSettingsContribution.ID, ShortcutTutorSettingsContribution, WorkbenchPhase.AfterRestored);
+registerWorkbenchContribution2(ShortcutTutorContribution.ID, ShortcutTutorContribution, WorkbenchPhase.Eventually);
 
 registerAction2(ShowCommandUsageAction);
 registerAction2(ResetCommandUsageAction);

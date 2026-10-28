@@ -143,10 +143,6 @@
 			"project": "vscode-workbench"
 		},
 		{
-			"name": "vs/workbench/contrib/keybindingTutor",
-			"project": "vscode-workbench"
-		},
-		{
 			"name": "vs/workbench/contrib/markers",
 			"project": "vscode-workbench"
 		},

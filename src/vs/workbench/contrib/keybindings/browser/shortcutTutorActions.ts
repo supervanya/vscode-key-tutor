@@ -4,15 +4,14 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { localize, localize2 } from '../../../../nls.js';
+import { Categories } from '../../../../platform/action/common/actionCommonCategories.js';
 import { Action2 } from '../../../../platform/actions/common/actions.js';
 import { ICommandService } from '../../../../platform/commands/common/commands.js';
 import { ServicesAccessor } from '../../../../platform/instantiation/common/instantiation.js';
 import { IKeybindingService } from '../../../../platform/keybinding/common/keybinding.js';
 import { IQuickInputService, IQuickPickItem } from '../../../../platform/quickinput/common/quickInput.js';
 import { IStorageService } from '../../../../platform/storage/common/storage.js';
-import { getCommandLabel, readCommandUsage, resetCommandUsage } from './keybindingTutor.js';
-
-const category = localize2('keybindingTutor', "Keybinding Tutor");
+import { getCommandLabel, readCommandUsage, resetCommandUsage } from './shortcutTutor.js';
 
 interface ICommandUsagePickItem extends IQuickPickItem {
 	readonly commandId: string;
@@ -24,13 +23,13 @@ interface ICommandUsagePickItem extends IQuickPickItem {
  */
 export class ShowCommandUsageAction extends Action2 {
 
-	static readonly ID = 'workbench.action.keybindingTutor.showCommandUsage';
+	static readonly ID = 'workbench.action.shortcutTutor.showCommandUsage';
 
 	constructor() {
 		super({
 			id: ShowCommandUsageAction.ID,
-			title: localize2('keybindingTutor.showCommandUsage', "Show Keyboard and Mouse Usage"),
-			category,
+			title: localize2('shortcutTutor.showCommandUsage', "Show Keyboard and Mouse Usage"),
+			category: Categories.Preferences,
 			f1: true,
 		});
 	}
@@ -46,14 +45,14 @@ export class ShowCommandUsageAction extends Action2 {
 			.map(([commandId, { keyboard, mouse }]): ICommandUsagePickItem => ({
 				commandId,
 				label: getCommandLabel(commandId),
-				description: keybindingService.lookupKeybinding(commandId)?.getLabel() ?? localize('keybindingTutor.noKeybinding', "No keybinding"),
-				detail: localize('keybindingTutor.usage', "Mouse: {0}, Keyboard: {1}", mouse, keyboard),
+				description: keybindingService.lookupKeybinding(commandId)?.getLabel() ?? localize('shortcutTutor.noKeybinding', "No keyboard shortcut"),
+				detail: localize('shortcutTutor.usage', "Mouse: {0}, Keyboard: {1}", mouse, keyboard),
 			}));
 
 		const picked = await quickInputService.pick(items, {
 			placeHolder: items.length
-				? localize('keybindingTutor.pickCommand', "Select a command to change its keybinding")
-				: localize('keybindingTutor.noUsage', "No commands recorded yet. Enable 'workbench.keybindingTutor.enabled' to start recording."),
+				? localize('shortcutTutor.pickCommand', "Select a command to change its keyboard shortcut")
+				: localize('shortcutTutor.noUsage', "No commands recorded yet. Enable 'keyboard.shortcutTutor.enabled' to start recording."),
 			matchOnDescription: true,
 		});
 		if (picked) {
@@ -69,9 +68,9 @@ export class ResetCommandUsageAction extends Action2 {
 
 	constructor() {
 		super({
-			id: 'workbench.action.keybindingTutor.resetCommandUsage',
-			title: localize2('keybindingTutor.resetCommandUsage', "Reset Keyboard and Mouse Usage"),
-			category,
+			id: 'workbench.action.shortcutTutor.resetCommandUsage',
+			title: localize2('shortcutTutor.resetCommandUsage', "Reset Keyboard and Mouse Usage"),
+			category: Categories.Preferences,
 			f1: true,
 		});
 	}
