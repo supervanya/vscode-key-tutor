@@ -10,7 +10,7 @@ import { Disposable } from '../../../../base/common/lifecycle.js';
 import { localize } from '../../../../nls.js';
 import { MenuRegistry } from '../../../../platform/actions/common/actions.js';
 import { ICommandService } from '../../../../platform/commands/common/commands.js';
-import { IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
+import { ConfigurationTarget, IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
 import { IKeybindingService } from '../../../../platform/keybinding/common/keybinding.js';
 import { ILogService } from '../../../../platform/log/common/log.js';
 import { INotificationService, Severity } from '../../../../platform/notification/common/notification.js';
@@ -20,21 +20,52 @@ import { IWorkbenchContribution } from '../../../common/contributions.js';
 export const KeybindingTutorSettings = {
 	Enabled: 'workbench.keybindingTutor.enabled',
 	Threshold: 'workbench.keybindingTutor.threshold',
+	IgnoredCommands: 'workbench.keybindingTutor.ignoredCommands',
 } as const;
 
 /**
- * How long after a pointer press a command execution is still attributed to that press.
+ * How many times a command was run with the keyboard and with the mouse.
+ */
+export interface ICommandUsage {
+	keyboard: number;
+	mouse: number;
+}
+
+/**
+ * How long after a pointer press or key press a command execution is still attributed to it.
  * Most clicks run their action on `click`, i.e. a few hundred milliseconds after `pointerdown`.
  */
-const POINTER_ATTRIBUTION_WINDOW_MS = 1000;
+const INPUT_ATTRIBUTION_WINDOW_MS = 1000;
 
 /**
  * Commands that are executed programmatically as a side effect of other actions and
- * therefore must never consume a pointer press.
+ * therefore must never consume an input.
  */
 const IGNORED_COMMANDS = /^(_|setContext$|vscode\.|workbench\.action\.keybindingTutor\.)/;
 
-const MUTED_COMMANDS_STORAGE_KEY = 'keybindingTutor.mutedCommands';
+const COMMAND_USAGE_STORAGE_KEY = 'keybindingTutor.commandUsage';
+
+/**
+ * Reads how often each command was run with the keyboard and with the mouse.
+ */
+export function readCommandUsage(storageService: IStorageService): Record<string, ICommandUsage> {
+	return JSON.parse(storageService.get(COMMAND_USAGE_STORAGE_KEY, StorageScope.PROFILE, '{}'));
+}
+
+/**
+ * Forgets how often each command was run with the keyboard and with the mouse.
+ */
+export function resetCommandUsage(storageService: IStorageService): void {
+	storageService.remove(COMMAND_USAGE_STORAGE_KEY, StorageScope.PROFILE);
+}
+
+/**
+ * Returns the title a command is shown with in the UI, or its id when it has none.
+ */
+export function getCommandLabel(commandId: string): string {
+	const title = MenuRegistry.getCommand(commandId)?.title;
+	return (typeof title === 'string' ? title : title?.value) ?? commandId;
+}
 
 /**
  * Notices commands that were run with the mouse although they have a keybinding,
@@ -47,7 +78,10 @@ export class KeybindingTutorContribution extends Disposable implements IWorkbenc
 	/** Timestamp of the last pointer press that has not yet been attributed to a command, or 0. */
 	private _pendingPointerPress = 0;
 
-	private readonly _mouseInvocations = new Map<string, number>();
+	/** Timestamp of the last key press that has not yet been attributed to a command, or 0. */
+	private _pendingKeyPress = 0;
+
+	private readonly _mouseInvocationsSinceHint = new Map<string, number>();
 
 	constructor(
 		@ICommandService commandService: ICommandService,
@@ -60,10 +94,16 @@ export class KeybindingTutorContribution extends Disposable implements IWorkbenc
 		super();
 
 		this._register(Event.runAndSubscribe(onDidRegisterWindow, ({ window, disposables }) => {
-			disposables.add(addDisposableListener(window, EventType.POINTER_DOWN, () => this._pendingPointerPress = Date.now(), true));
+			disposables.add(addDisposableListener(window, EventType.POINTER_DOWN, () => {
+				this._pendingPointerPress = Date.now();
+				this._pendingKeyPress = 0;
+			}, true));
 			// A key press means whatever runs next was not triggered by the earlier pointer press,
 			// e.g. a keybinding, or keyboard navigation in a menu that was opened with the mouse.
-			disposables.add(addDisposableListener(window, EventType.KEY_DOWN, () => this._pendingPointerPress = 0, true));
+			disposables.add(addDisposableListener(window, EventType.KEY_DOWN, () => {
+				this._pendingKeyPress = Date.now();
+				this._pendingPointerPress = 0;
+			}, true));
 		}, { window: mainWindow, disposables: this._store }));
 
 		this._register(commandService.onWillExecuteCommand(e => this._onWillExecuteCommand(e.commandId)));
@@ -74,53 +114,57 @@ export class KeybindingTutorContribution extends Disposable implements IWorkbenc
 			return;
 		}
 
-		const elapsed = Date.now() - this._pendingPointerPress;
-		const fromPointer = this._pendingPointerPress !== 0 && elapsed <= POINTER_ATTRIBUTION_WINDOW_MS;
+		const now = Date.now();
+		const fromPointer = this._pendingPointerPress !== 0 && now - this._pendingPointerPress <= INPUT_ATTRIBUTION_WINDOW_MS;
 		const keybinding = this._keybindingService.lookupKeybinding(commandId);
-		this._logService.trace(`[KeybindingTutor] ${commandId} fromPointer=${fromPointer} elapsed=${this._pendingPointerPress ? elapsed : -1}ms keybinding=${keybinding?.getLabel() ?? 'none'}`);
+		// Typing presses keys without running commands, so a command without a keybinding
+		// that runs shortly after was not triggered by the keyboard.
+		const fromKeyboard = !!keybinding && this._pendingKeyPress !== 0 && now - this._pendingKeyPress <= INPUT_ATTRIBUTION_WINDOW_MS;
+		this._logService.trace(`[KeybindingTutor] ${commandId} fromPointer=${fromPointer} fromKeyboard=${fromKeyboard} keybinding=${keybinding?.getLabel() ?? 'none'}`);
 
-		if (!fromPointer) {
+		if (!fromPointer && !fromKeyboard) {
 			return;
 		}
-		// Only the first command after a pointer press is attributed to it, commands
+		// Only the first command after an input is attributed to it, commands
 		// that it runs in turn are not.
 		this._pendingPointerPress = 0;
+		this._pendingKeyPress = 0;
+		this._recordUsage(commandId, fromPointer ? 'mouse' : 'keyboard');
 
-		if (!keybinding || this._isMuted(commandId)) {
+		if (!fromPointer || !keybinding || this._getIgnoredCommands().includes(commandId)) {
 			return;
 		}
 
-		const count = (this._mouseInvocations.get(commandId) ?? 0) + 1;
+		const count = (this._mouseInvocationsSinceHint.get(commandId) ?? 0) + 1;
 		const threshold = Math.max(1, this._configurationService.getValue<number>(KeybindingTutorSettings.Threshold) ?? 3);
 		if (count < threshold) {
-			this._mouseInvocations.set(commandId, count);
+			this._mouseInvocationsSinceHint.set(commandId, count);
 			return;
 		}
-		this._mouseInvocations.delete(commandId);
+		this._mouseInvocationsSinceHint.delete(commandId);
 
-		const title = MenuRegistry.getCommand(commandId)?.title;
-		const label = (typeof title === 'string' ? title : title?.value) ?? commandId;
 		this._notificationService.prompt(
 			Severity.Info,
-			localize('keybindingTutor.hint', "You can run '{0}' with {1}.", label, keybinding.getLabel() ?? ''),
+			localize('keybindingTutor.hint', "You can run '{0}' with {1}.", getCommandLabel(commandId), keybinding.getLabel() ?? ''),
 			[{
 				label: localize('keybindingTutor.dontShowAgain', "Don't Show Again for This Command"),
-				run: () => this._mute(commandId),
+				run: () => this._ignore(commandId),
 			}],
 		);
 	}
 
-	private _getMutedCommands(): string[] {
-		return JSON.parse(this._storageService.get(MUTED_COMMANDS_STORAGE_KEY, StorageScope.PROFILE, '[]'));
+	private _recordUsage(commandId: string, input: keyof ICommandUsage): void {
+		const usage = readCommandUsage(this._storageService);
+		usage[commandId] ??= { keyboard: 0, mouse: 0 };
+		usage[commandId][input]++;
+		this._storageService.store(COMMAND_USAGE_STORAGE_KEY, JSON.stringify(usage), StorageScope.PROFILE, StorageTarget.MACHINE);
 	}
 
-	private _isMuted(commandId: string): boolean {
-		return this._getMutedCommands().includes(commandId);
+	private _getIgnoredCommands(): string[] {
+		return this._configurationService.getValue<string[]>(KeybindingTutorSettings.IgnoredCommands) ?? [];
 	}
 
-	private _mute(commandId: string): void {
-		const muted = this._getMutedCommands();
-		muted.push(commandId);
-		this._storageService.store(MUTED_COMMANDS_STORAGE_KEY, JSON.stringify(muted), StorageScope.PROFILE, StorageTarget.USER);
+	private _ignore(commandId: string): Promise<void> {
+		return this._configurationService.updateValue(KeybindingTutorSettings.IgnoredCommands, [...this._getIgnoredCommands(), commandId], ConfigurationTarget.USER);
 	}
 }
