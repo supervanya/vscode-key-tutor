@@ -462,6 +462,9 @@ import './contrib/list/browser/list.contribution.js';
 // Accessibility Signals
 import './contrib/accessibilitySignals/browser/accessibilitySignal.contribution.js';
 
+// Keybinding Tutor
+import './contrib/keybindingTutor/browser/keybindingTutor.contribution.js';
+
 // Bracket Pair Colorizer 2 Telemetry
 import './contrib/bracketPairColorizer2Telemetry/browser/bracketPairColorizer2Telemetry.contribution.js';
 
