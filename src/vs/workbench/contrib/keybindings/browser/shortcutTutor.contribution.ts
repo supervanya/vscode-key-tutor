@@ -67,7 +67,7 @@ configurationRegistry.registerConfiguration(optionsConfigurationNode);
 /**
  * Shows the keyboard shortcut tutor's options in the Settings editor only while the tutor is enabled.
  */
-class ShortcutTutorSettingsContribution extends Disposable implements IWorkbenchContribution {
+export class ShortcutTutorSettingsContribution extends Disposable implements IWorkbenchContribution {
 
 	static readonly ID = 'workbench.contrib.shortcutTutorSettings';
 
